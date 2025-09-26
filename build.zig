@@ -34,7 +34,8 @@ pub fn build(b: *std.Build) !void {
         // macOS-specific defines to fix zlib compilation issues
         lib.root_module.addCMacro("NO_GZCOMPRESS", "1"); // Disable gz compression functions
         lib.root_module.addCMacro("NO_GZIP", "1"); // Disable gzip support to avoid conflicts
-        lib.root_module.addCMacro("Z_SOLO", "1"); // Build zlib in standalone mode (no gz* functions)
+        lib.root_module.addCMacro("Z_FREETYPE", ""); // Tell zutil.c not to include gzguts.h
+        // Note: Don't use Z_SOLO as it removes compress/uncompress functions needed by Assbin
         lib.root_module.addCMacro("_DARWIN_C_SOURCE", ""); // Enable Darwin extensions
     }
 
@@ -106,7 +107,7 @@ pub fn build(b: *std.Build) !void {
             std.mem.eql(u8, ext_lib.name, "unzip") or
             std.mem.eql(u8, ext_lib.name, "zip");
 
-        // Special handling for zlib on macOS - exclude gz* files
+        // Special handling for zlib on macOS - exclude gz* files to avoid fdopen conflicts
         if (std.mem.eql(u8, ext_lib.name, "zlib") and target.result.os.tag == .macos) {
             const macos_zlib_files = [_][]const u8{
                 "contrib/zlib/inflate.c",
@@ -166,13 +167,11 @@ pub fn build(b: *std.Build) !void {
         const enabled = enable_all or enabled_formats.contains(format_files.name);
 
         if (enabled) {
-            // Most format files are C++, but some contain C files
-            const is_c_format = std.mem.eql(u8, format_files.name, "Assjson"); // Contains cencode.c
-
+            // Format files are mostly C++, don't apply C flags to them
             lib.root_module.addCSourceFiles(.{
                 .root = assimp.path(""),
                 .files = &@field(sources.formats, format_files.name),
-                .flags = if (is_c_format) common_flags else cpp_flags,
+                .flags = cpp_flags,
             });
         } else {
             const define_importer = b.fmt("ASSIMP_BUILD_NO_{f}_IMPORTER", .{fmtUpperCase(format_files.name)});
@@ -389,6 +388,7 @@ const sources = struct {
             "code/AssetLib/Assbin/AssbinLoader.cpp",
         };
         pub const Assjson = [_][]const u8{
+            // Note: cencode.c needs special handling but we'll compile it with C++ flags for simplicity
             "code/AssetLib/Assjson/cencode.c",
             "code/AssetLib/Assjson/json_exporter.cpp",
             "code/AssetLib/Assjson/mesh_splitter.cpp",
