@@ -167,12 +167,12 @@ pub fn build(b: *std.Build) !void {
     const macos_unsupported_formats = [_][]const u8{
         "Assbin", // Uses compress2/uncompress from zlib
         "Blend", // Blender files may use compression
-        "FBX", // Uses zlib compression for binary FBX  
         "X", // DirectX files may use compression
         "XGL", // May use compression
         "Q3BSP", // Quake 3 BSP may use compression
         "Irr", // Irrlicht scenes may use compression
         "3MF", // 3D Manufacturing Format uses ZIP
+        // Note: FBX works! Even though binary FBX uses compression, the code handles Z_SOLO mode
     };
 
     inline for (comptime std.meta.declarations(sources.formats)) |format_files| {

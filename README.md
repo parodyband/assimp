@@ -9,13 +9,23 @@ This repo is a build sdk for [Assimp](https://github.com/assimp/assimp) to be us
 - **3MF** - 3D Manufacturing Format (uses ZIP compression)
 - **Assbin** - Assimp Binary format (uses compress2/uncompress)
 - **Blend** - Blender files (may use compression)
-- **FBX** - Autodesk FBX Binary (uses zlib compression)
 - **Irr** - Irrlicht scenes (may use compression)
 - **Q3BSP** - Quake 3 BSP (may use compression)
 - **X** - DirectX .x files (may use compression)
 - **XGL** - OpenGL XML format (may use compression)
 
-These formats will be automatically disabled when building on macOS. Most common formats like **OBJ, STL, glTF/glTF2, Collada, PLY** etc. work normally as they don't require the disabled compression functions.
+These formats will be automatically disabled when building on macOS. 
+
+### ✅ Supported Formats on macOS
+
+The following popular formats work normally on macOS:
+- **FBX** - Both ASCII and Binary FBX files (the code gracefully handles Z_SOLO mode)
+- **glTF/glTF2** - Including embedded and binary formats
+- **OBJ** - Wavefront OBJ with MTL support
+- **STL** - Both ASCII and binary STL
+- **Collada (DAE)** - Full support
+- **PLY** - Stanford PLY format
+- And many others that don't require the disabled compression functions
 
 ## Usage
 
