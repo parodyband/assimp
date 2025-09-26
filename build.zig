@@ -30,6 +30,12 @@ pub fn build(b: *std.Build) !void {
         lib.root_module.addCMacro("_WINDOWS", "");
         lib.root_module.addCMacro("_WIN32", "");
         lib.root_module.addCMacro("OPENDDL_STATIC_LIBARY", "");
+    } else if (target.result.os.tag == .macos) {
+        // macOS-specific defines to fix zlib compilation issues
+        lib.root_module.addCMacro("NO_GZCOMPRESS", "1"); // Disable gz compression functions
+        lib.root_module.addCMacro("NO_GZIP", "1"); // Disable gzip support to avoid conflicts
+        lib.root_module.addCMacro("Z_SOLO", "1"); // Build zlib in standalone mode (no gz* functions)
+        lib.root_module.addCMacro("_DARWIN_C_SOURCE", ""); // Enable Darwin extensions
     }
 
     lib.linkLibC();
@@ -72,18 +78,61 @@ pub fn build(b: *std.Build) !void {
         .{ .include_extensions = &.{ ".h", ".inl", ".hpp" } },
     );
 
+    // Determine compiler flags based on target OS
+    const common_flags = if (target.result.os.tag == .macos)
+        &[_][]const u8{
+            "-Wno-macro-redefined", // Suppress OS_CODE redefinition warning
+            "-std=c99", // Use C99 standard for C files
+        }
+    else
+        &[_][]const u8{};
+
+    const cpp_flags = if (target.result.os.tag == .macos)
+        &[_][]const u8{
+            "-Wno-macro-redefined", // Suppress OS_CODE redefinition warning
+        }
+    else
+        &[_][]const u8{};
+
     lib.root_module.addCSourceFiles(.{
         .root = assimp.path(""),
         .files = &sources.common,
-        .flags = &.{},
+        .flags = cpp_flags,
     });
 
     inline for (comptime std.meta.declarations(sources.libraries)) |ext_lib| {
-        lib.root_module.addCSourceFiles(.{
-            .root = assimp.path(""),
-            .files = &@field(sources.libraries, ext_lib.name),
-            .flags = &.{},
-        });
+        // Use C flags for C libraries (zlib, unzip, etc.)
+        const is_c_lib = std.mem.eql(u8, ext_lib.name, "zlib") or
+            std.mem.eql(u8, ext_lib.name, "unzip") or
+            std.mem.eql(u8, ext_lib.name, "zip");
+
+        // Special handling for zlib on macOS - exclude gz* files
+        if (std.mem.eql(u8, ext_lib.name, "zlib") and target.result.os.tag == .macos) {
+            const macos_zlib_files = [_][]const u8{
+                "contrib/zlib/inflate.c",
+                "contrib/zlib/infback.c",
+                "contrib/zlib/inftrees.c",
+                "contrib/zlib/compress.c",
+                "contrib/zlib/inffast.c",
+                "contrib/zlib/uncompr.c",
+                "contrib/zlib/trees.c",
+                "contrib/zlib/zutil.c",
+                "contrib/zlib/deflate.c",
+                "contrib/zlib/crc32.c",
+                "contrib/zlib/adler32.c",
+            };
+            lib.root_module.addCSourceFiles(.{
+                .root = assimp.path(""),
+                .files = &macos_zlib_files,
+                .flags = common_flags,
+            });
+        } else {
+            lib.root_module.addCSourceFiles(.{
+                .root = assimp.path(""),
+                .files = &@field(sources.libraries, ext_lib.name),
+                .flags = if (is_c_lib) common_flags else cpp_flags,
+            });
+        }
     }
 
     var enable_all = false;
@@ -117,10 +166,13 @@ pub fn build(b: *std.Build) !void {
         const enabled = enable_all or enabled_formats.contains(format_files.name);
 
         if (enabled) {
+            // Most format files are C++, but some contain C files
+            const is_c_format = std.mem.eql(u8, format_files.name, "Assjson"); // Contains cencode.c
+
             lib.root_module.addCSourceFiles(.{
                 .root = assimp.path(""),
                 .files = &@field(sources.formats, format_files.name),
-                .flags = &.{},
+                .flags = if (is_c_format) common_flags else cpp_flags,
             });
         } else {
             const define_importer = b.fmt("ASSIMP_BUILD_NO_{f}_IMPORTER", .{fmtUpperCase(format_files.name)});
@@ -281,22 +333,6 @@ const sources = struct {
             "contrib/zlib/inffast.c",
             "contrib/zlib/uncompr.c",
             "contrib/zlib/gzlib.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/testzlib/testzlib.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/inflate86/inffas86.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/masmx64/inffas8664.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/infback9/infback9.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/infback9/inftree9.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/minizip/miniunz.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/minizip/minizip.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/minizip/unzip.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/minizip/ioapi.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/minizip/mztools.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/minizip/zip.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/minizip/iowin32.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/puff/pufftest.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/puff/puff.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/blast/blast.c",
-            // assimpRoot() ++ "/contrib/zlib/contrib/untgz/untgz.c",
             "contrib/zlib/trees.c",
             "contrib/zlib/zutil.c",
             "contrib/zlib/deflate.c",
