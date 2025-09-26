@@ -34,8 +34,7 @@ pub fn build(b: *std.Build) !void {
         // macOS-specific defines to fix zlib compilation issues
         lib.root_module.addCMacro("NO_GZCOMPRESS", "1"); // Disable gz compression functions
         lib.root_module.addCMacro("NO_GZIP", "1"); // Disable gzip support to avoid conflicts
-        lib.root_module.addCMacro("Z_FREETYPE", ""); // Tell zutil.c not to include gzguts.h
-        // Note: Don't use Z_SOLO as it removes compress/uncompress functions needed by Assbin
+        lib.root_module.addCMacro("Z_SOLO", "1"); // Prevent zutil.c from including gzguts.h
         lib.root_module.addCMacro("_DARWIN_C_SOURCE", ""); // Enable Darwin extensions
     }
 
@@ -163,8 +162,34 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
+    // Formats that have issues on macOS due to Z_SOLO zlib mode
+    // (Z_SOLO disables compress/uncompress functions to avoid header conflicts)
+    const macos_unsupported_formats = [_][]const u8{
+        "Assbin", // Uses compress2/uncompress from zlib
+        "Blend", // Blender files may use compression
+        "FBX", // Uses zlib compression for binary FBX  
+        "X", // DirectX files may use compression
+        "XGL", // May use compression
+        "Q3BSP", // Quake 3 BSP may use compression
+        "Irr", // Irrlicht scenes may use compression
+        "3MF", // 3D Manufacturing Format uses ZIP
+    };
+
     inline for (comptime std.meta.declarations(sources.formats)) |format_files| {
-        const enabled = enable_all or enabled_formats.contains(format_files.name);
+        var enabled = enable_all or enabled_formats.contains(format_files.name);
+
+        // Disable problematic formats on macOS
+        if (target.result.os.tag == .macos) {
+            for (macos_unsupported_formats) |unsupported| {
+                if (std.mem.eql(u8, format_files.name, unsupported)) {
+                    if (enabled) {
+                        std.debug.print("Warning: {s} format is not supported on macOS due to zlib conflicts, skipping...\n", .{format_files.name});
+                    }
+                    enabled = false;
+                    break;
+                }
+            }
+        }
 
         if (enabled) {
             // Format files are mostly C++, don't apply C flags to them
